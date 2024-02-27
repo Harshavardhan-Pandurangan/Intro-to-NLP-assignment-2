@@ -40,8 +40,12 @@ if __name__ == '__main__':
         trainer = FNNTrainer()
         trainer.load_model('./fnn_model.pth')
 
-        trainer.predict(sentence, 'glove-wiki-gigaword-200')
+        trainer.predict(sentence)
 
     elif model_name == '-r':
-        pass
+        # Recurrent Neural Network
+        trainer = RNNTrainer()
+        trainer.load_model('./rnn_model.pth')
+
+        trainer.predict(sentence)
 

@@ -70,6 +70,8 @@ class FNNTrainer:
         dev_conllu_dataset = CoNLLUDataset(dev_data, self.device)
         test_conllu_dataset = CoNLLUDataset(test_data, self.device)
 
+        torch.manual_seed(0)
+
         train_dataloader = DataLoader(train_conllu_dataset, batch_size=64, shuffle=True)
         dev_dataloader = DataLoader(dev_conllu_dataset, batch_size=64, shuffle=True)
         test_dataloader = DataLoader(test_conllu_dataset, batch_size=64, shuffle=True)
@@ -117,6 +119,7 @@ class FNNTrainer:
 
     # function to find vocabulary and POS tags, as well as load the word embeddings to be used
     def preprocess_train(self, df, p=3, s=3, embedding_type='glove-wiki-gigaword-100'):
+        self.embedding_type = embedding_type
         vocab = set(df['word'])
         pos_tags = set(df['pos'])
         word_vectors_all = api.load(embedding_type)
@@ -382,7 +385,7 @@ class FNNTrainer:
             'optimizer_type': self.optimizer_type,
             'optimizer': self.optimizer.state_dict(),
             'criterion_type': self.criterion_type,
-            'criterion': self.criterion,
+            'criterion': self.criterion.state_dict(),
             'one_hot': self.pos_tags_one_hot,
             'word_vectors': self.word_vectors,
             'hidden_params': self.hidden_params,
@@ -390,6 +393,7 @@ class FNNTrainer:
             'prev_n': self.prev_n,
             'succ_n': self.succ_n,
             'output_dim': self.output_dim,
+            'embedding_type': self.embedding_type
         }
         torch.save(data, path)
 
@@ -408,11 +412,9 @@ class FNNTrainer:
         self.prev_n = data['prev_n']
         self.succ_n = data['succ_n']
         self.output_dim = data['output_dim']
+        self.embedding_type = data['embedding_type']
 
-        self.model.to(self.device)
-        self.model.eval()
-
-    def predict(self, sentence, embedding_type='glove-wiki-gigaword-100'):
+    def predict(self, sentence):
         # check if punkt is already downloaded
         try:
             nltk.data.find('tokenizers/punkt')
@@ -426,7 +428,8 @@ class FNNTrainer:
         tokens = [token for token in tokens if token.isalpha() or (token.replace('-', '').replace('\'', '').isalpha())]
 
         # load the word vectors
-        word_vectors = api.load(embedding_type)
+        # word_vectors = api.load(self.embedding_type)
+        word_vectors = self.word_vectors
 
         # get the embeddings for all the tokens
         embeddings = []
@@ -474,7 +477,8 @@ class FNNTrainer:
                 outputs_copy = outputs.clone().detach().cpu().numpy()
                 pos_tags.append(list(self.pos_tags_one_hot.keys())[np.argmax(outputs_copy)])
 
-        print(pos_tags)
+        for i in range(len(tokens)):
+            print(f'{tokens[i]} {pos_tags[i]}')
 
 
 
@@ -514,7 +518,7 @@ if __name__ == '__main__':
     fnn_train.setup_dataloaders(df_train, df_test, df_dev, 2, 2, 'glove-wiki-gigaword-200')
     fnn_train.create_model([100, 100])
     fnn_train.setup_cr_op('bce', 'adam')
-    fnn_train.train(20, fnn_train.train_dataloader)
+    fnn_train.train(30, fnn_train.train_dataloader)
     results_test = fnn_train.test(fnn_train.test_dataloader)
     results_dev = fnn_train.dev(fnn_train.dev_dataloader)
     fnn_train.save_model('fnn_model.pth')

@@ -9,20 +9,12 @@ import tqdm
 from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score
 import matplotlib.pyplot as plt
 import wandb
+import nltk
 
 import warnings
 warnings.filterwarnings('ignore')
 
-device = ''
-if torch.cuda.is_available():
-    device = torch.device("cuda")
-elif torch.backends.mps.is_available():
-    device = torch.device("mps")
-else:
-    device = torch.device("cpu")
-# device = torch.device("cpu")
-
-
+# dataset class for the CoNLL-U dataset
 class CoNLLUDataset(Dataset):
     def __init__(self, dataset, device):
         self.dataset = dataset
@@ -41,7 +33,6 @@ class CoNLLUDataset(Dataset):
 class RNN(nn.Module):
     def __init__(self, embed_dim, hidden_dim, output_dim):
         super(RNN, self).__init__()
-        self.hidden_dim = hidden_dim
         self.rnn = nn.RNN(embed_dim, hidden_dim, batch_first=True)
         self.fc = nn.Linear(hidden_dim, output_dim)
         self.softmax = nn.Softmax(dim=1)
@@ -85,28 +76,32 @@ class RNNTrainer:
         print('Dataloaders Created')
 
     def create_model(self, hidden_dim):
-        self.model = RNN(self.embed_dim, hidden_dim, self.output_dim).to(self.device)
+        self.hidden_dim = hidden_dim
+        self.model = RNN(self.embed_dim, self.hidden_dim, self.output_dim).to(self.device)
 
         print('Model Created')
 
     def setup_cr_op(self, criterion, optimizer):
         if criterion == 'cross_entropy':
             self.criterion = nn.CrossEntropyLoss()
+            self.criterion_type = 'cross_entropy'
         elif criterion == 'bce':
             self.criterion = nn.BCELoss()
+            self.criterion_type = 'bce'
         else:
             print('Invalid Criterion')
 
         if optimizer == 'adam':
             self.optimizer = torch.optim.Adam(self.model.parameters(), lr=0.001, weight_decay=0.0001)
+            self.optimizer_type = 'adam'
         elif optimizer == 'sgd':
             self.optimizer = torch.optim.SGD(self.model.parameters(), lr=0.02)
+            self.optimizer_type = 'sgd'
         else:
             print('Invalid Optimizer')
 
-        print('Criterion and Optimizer Setup')
-
     def preprocess_train(self, df, embedding_type='glove-wiki-gigaword-100'):
+        self.embedding_type = embedding_type
         vocab = set(df['word'])
         pos_tags = set(df['pos'])
         word_vectors_all = api.load(embedding_type)
@@ -130,6 +125,8 @@ class RNNTrainer:
         # convert the df to list
         data = df.values.tolist()
         dataset = [[word_vectors[data[i][0]], pos_tags_one_hot[data[i][1]]] for i in range(len(data))]
+
+        self.word_vectors = word_vectors
 
         return dataset, word_vectors, pos_tags_one_hot
 
@@ -203,12 +200,76 @@ class RNNTrainer:
         }
 
     def save_model(self, path):
-        torch.save(self.model.state_dict(), path)
-        print('Model Saved')
+        data = {
+            'model': self.model.state_dict(),
+            'optimizer_type': self.optimizer_type,
+            'optimizer': self.optimizer.state_dict(),
+            'criterion_type': self.criterion_type,
+            'criterion': self.criterion.state_dict(),
+            'one_hot': self.pos_tags_one_hot,
+            'word_vectors': self.word_vectors,
+            'hidden_dim': self.hidden_dim,
+            'embed_dim': self.embed_dim,
+            'output_dim': self.output_dim,
+            'embedding_type': self.embedding_type
+        }
+        torch.save(data, path)
 
     def load_model(self, path):
-        self.model.load_state_dict(torch.load(path))
-        print('Model Loaded')
+        data = torch.load(path)
+        self.model = RNN(data['embed_dim'], data['hidden_dim'], data['output_dim'])
+        self.model.load_state_dict(data['model'])
+        self.model.eval()
+        self.setup_cr_op(data['criterion_type'], data['optimizer_type'])
+        self.criterion_type = data['criterion_type']
+        self.optimizer_type = data['optimizer_type']
+        self.pos_tags_one_hot = data['one_hot']
+        self.word_vectors = data['word_vectors']
+        self.hidden_dim = data['hidden_dim']
+        self.embed_dim = data['embed_dim']
+        self.output_dim = data['output_dim']
+        self.embedding_type = data['embedding_type']
+
+    def predict(self, sentence):
+        # check if punkt is already downloaded
+        try:
+            nltk.data.find('tokenizers/punkt')
+        except LookupError:
+            nltk.download('punkt')
+
+        # tokenize the sentence with nltk
+        tokens = nltk.word_tokenize(sentence)
+
+        # remove all the tokens with any non-alphabetic characters except for hyphens and apostrophes
+        tokens = [token for token in tokens if token.isalpha() or (token.replace('-', '').replace('\'', '').isalpha())]
+
+        # load the word vectors
+        # word_vectors = api.load(self.embedding_type)
+        word_vectors = self.word_vectors
+
+        # get the embeddings for all the tokens
+        embeddings = []
+        for token in tokens:
+            if token in word_vectors:
+                embeddings.append(word_vectors[token])
+            else:
+                embeddings.append(np.zeros(len(word_vectors['the'])))
+        embeddings = np.array(embeddings, dtype=np.float32)
+        embeddings = np.reshape(embeddings, (embeddings.shape[0], 1, embeddings.shape[1]))
+
+        final_dataset = []
+        for i in range(embeddings.shape[0]):
+            final_dataset.append(torch.tensor(embeddings[i], dtype=torch.float32, device=self.device))
+
+        pos_tags = []
+        with torch.no_grad():
+            for i in range(len(final_dataset)):
+                output = self.model(final_dataset[i])
+                pos_tags.append(list(self.pos_tags_one_hot.keys())[np.argmax(output.cpu().numpy())])
+
+        for i in range(len(tokens)):
+            print(f'{tokens[i]} {pos_tags[i]}')
+
 
 
 if __name__ == '__main__':
