@@ -153,3 +153,4 @@ cython_debug/
 
 ud-treebanks-v2.13.tgz
 /ud-treebanks-v2.13
+/wandb
