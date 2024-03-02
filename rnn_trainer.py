@@ -149,6 +149,7 @@ class RNNTrainer:
         return dataset
 
     def train(self, epochs, train_dataloader):
+        dev_acc = []
         print()
         self.model.train()
         for epoch in range(epochs):
@@ -165,6 +166,9 @@ class RNNTrainer:
                 self.optimizer.step()
                 running_loss += loss.item()
             print(f'Loss: {epoch + 1}/{epochs}: {running_loss / len(train_dataloader)}')
+            acc = self.evaluate(self.dev_dataloader)
+            dev_acc.append(acc)
+        return dev_acc
 
     def evaluate(self, dataloader):
         self.model.eval()
@@ -192,12 +196,14 @@ class RNNTrainer:
         print(f'Recall: {recall_score(all_labels, all_preds, average="weighted")}')
         print(f'F1: {f1_score(all_labels, all_preds, average="weighted")}')
 
-        return {
-            'accuracy': accuracy_score(all_labels, all_preds),
-            'precision': precision_score(all_labels, all_preds, average="weighted"),
-            'recall': recall_score(all_labels, all_preds, average="weighted"),
-            'f1': f1_score(all_labels, all_preds, average="weighted")
-        }
+        # return {
+        #     'accuracy': accuracy_score(all_labels, all_preds),
+        #     'precision': precision_score(all_labels, all_preds, average="weighted"),
+        #     'recall': recall_score(all_labels, all_preds, average="weighted"),
+        #     'f1': f1_score(all_labels, all_preds, average="weighted")
+        # }
+
+        return accuracy_score(all_labels, all_preds)
 
     def save_model(self, path):
         data = {

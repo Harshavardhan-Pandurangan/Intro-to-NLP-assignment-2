@@ -326,6 +326,11 @@ class FNNTrainer:
             'f1_score': f1_score(total_labels, total_outputs, average='weighted', zero_division=0)
         }
 
+        # return {
+        #     'total_outputs': total_outputs,
+        #     'total_labels': total_labels,
+        # }
+
     def dev(self, dev_dataloader):
         self.model.eval()
         running_loss = 0.0
@@ -378,6 +383,11 @@ class FNNTrainer:
             'recall': recall_score(total_labels, total_outputs, average='weighted', zero_division=0),
             'f1_score': f1_score(total_labels, total_outputs, average='weighted', zero_division=0)
         }
+
+        # return {
+        #     'total_outputs': total_outputs,
+        #     'total_labels': total_labels,
+        # }
 
     def save_model(self, path):
         data = {
@@ -515,7 +525,7 @@ if __name__ == '__main__':
     print('Dataframes Created')
 
     fnn_train = FNNTrainer()
-    fnn_train.setup_dataloaders(df_train, df_test, df_dev, 2, 2, 'glove-wiki-gigaword-200')
+    fnn_train.setup_dataloaders(df_train, df_test, df_dev, 1, 1, 'glove-wiki-gigaword-200')
     fnn_train.create_model([100, 100])
     fnn_train.setup_cr_op('bce', 'adam')
     fnn_train.train(30, fnn_train.train_dataloader)
