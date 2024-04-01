@@ -1,4 +1,4 @@
-# NLP Assignment 1 - POS Tagging
+# NLP Assignment 2 - FNN and RNN based Classification
 ## Harshavardhan P - 2021111003
 
 <br>
